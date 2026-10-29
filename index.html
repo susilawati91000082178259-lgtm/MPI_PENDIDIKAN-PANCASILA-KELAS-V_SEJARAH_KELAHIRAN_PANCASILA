@@ -1,0 +1,126 @@
+<!-- ... existing code ... -->
+    <script>
+        // --- DEKLARASI URL GOOGLE APPS SCRIPT ---
+        // Ganti URL di bawah ini dengan URL Web App dari Google Apps Script Anda
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbwSOpYTJ79_Gk3Qpd3eFmIfA3sHLZdoEnZ4QvLegnZGMwlSnvzuJyOeju229Y70gJtv/exec";
+
+        /* =========================================================
+           STATE MANAGEMENT & UTILS
+        ========================================================= */
+        const state = {
+            studentName: '',
+            studentClass: '',
+            progress: { belajar: false, bermain: false, berlatih: false },
+            currentSection: '',
+            currentIndex: 0,
+            belajarQuizzesDone: [false, false, false, false, false, false],
+            scores: { bermain: 0, berlatih: 0 },
+            berlatihDetails: { l1: 0, l2: 0, l3: 0 }, // Poin per level
+            answers: { bermain: [], berlatih: [] } // Menampung detail jawaban siswa
+        };
+
+        // Utility: Show/Hide Screens
+<!-- ... existing code ... -->
+        function answerBermain(selectedIdx, ansIdx) {
+            const isCorrect = (selectedIdx === ansIdx);
+            if(isCorrect) {
+                state.scores.bermain += 10; // 10 questions = 100 max
+                showToast('Benar! +10 Poin', 'bg-green-500');
+            } else {
+                showToast('Kurang Tepat!', 'bg-red-500');
+            }
+            
+            // Simpan riwayat jawaban untuk database
+            const dataSoal = bermainData[state.currentIndex];
+            state.answers.bermain.push({
+                question: dataSoal.question,
+                answer: dataSoal.options[selectedIdx],
+                status: isCorrect ? 'Benar' : 'Salah'
+            });
+
+            setTimeout(() => {
+<!-- ... existing code ... -->
+        function answerBerlatih(selectedIdx, ansIdx, poin, level) {
+            const isCorrect = (selectedIdx === ansIdx);
+            if(isCorrect) {
+                state.scores.berlatih += poin;
+                if(level === 1) state.berlatihDetails.l1 += poin;
+                if(level === 2) state.berlatihDetails.l2 += poin;
+                if(level === 3) state.berlatihDetails.l3 += poin;
+            }
+
+            // Simpan riwayat jawaban untuk database
+            const dataSoal = berlatihData[state.currentIndex];
+            state.answers.berlatih.push({
+                question: dataSoal.q,
+                answer: dataSoal.options[selectedIdx],
+                status: isCorrect ? 'Benar' : 'Salah'
+            });
+
+            setTimeout(() => {
+                if(state.currentIndex < berlatihData.length - 1) {
+                    state.currentIndex++;
+                    renderActivity();
+                } else {
+                    state.progress.berlatih = true;
+                    prepareReport();
+                    showModal('Menyimpan Data...', 'Mohon tunggu, hasil evaluasimu sedang dikirim ke server.', 'fas fa-spinner fa-spin text-blue-500');
+                    sendDataToGAS();
+                }
+            }, 500); // quick transition, no feedback during assessment
+        }
+
+        // --- FUNGSI PENGIRIMAN DATA KE GOOGLE SHEETS ---
+        function sendDataToGAS() {
+            if(GAS_URL === "URL_GAS_ANDA_DISINI") {
+                console.warn("GAS URL belum di-set, melewati proses simpan ke database.");
+                closeModal();
+                showModal('Asesmen Selesai! 📝', `Selamat! Kamu telah menyelesaikan evaluasi. (Mode Offline / Database belum diset).`, 'fas fa-clipboard-check text-kemenag');
+                backToDashboard();
+                return;
+            }
+
+            let jmlBenar = 0;
+            let jmlSalah = 0;
+            
+            state.answers.bermain.forEach(a => a.status === 'Benar' ? jmlBenar++ : jmlSalah++);
+            state.answers.berlatih.forEach(a => a.status === 'Benar' ? jmlBenar++ : jmlSalah++);
+
+            // Kumpulkan daftar soal untuk sheet "Data Soal"
+            const allSoal = [];
+            bermainData.forEach((s, i) => allSoal.push({kategori: 'Bermain', no: i+1, q: s.question, opts: s.options.join(' | '), ans: s.options[s.ans]}));
+            berlatihData.forEach((s, i) => allSoal.push({kategori: 'Berlatih', no: i+1, q: s.q, opts: s.options.join(' | '), ans: s.options[s.ans]}));
+
+            const payload = {
+                nama: state.studentName,
+                kelas: state.studentClass,
+                nilaiAkhir: state.scores.berlatih,
+                skorBermain: state.scores.bermain,
+                jmlBenar: jmlBenar,
+                jmlSalah: jmlSalah,
+                detailJawaban: JSON.stringify({ bermain: state.answers.bermain, berlatih: state.answers.berlatih }),
+                allSoal: allSoal
+            };
+
+            // Menggunakan mode no-cors untuk mengabaikan batasan CORS saat request POST
+            fetch(GAS_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            }).then(() => {
+                closeModal();
+                showModal('Asesmen Selesai! 📝', 'Selamat! Seluruh evaluasi selesai dan datamu berhasil disimpan ke server. Mari lihat laporanmu.', 'fas fa-clipboard-check text-kemenag');
+                backToDashboard();
+            }).catch(err => {
+                console.error("Gagal mengirim data:", err);
+                closeModal();
+                showModal('Asesmen Selesai! 📝', 'Kamu telah menyelesaikan evaluasi (Namun gagal terhubung ke server/offline). Mari lihat laporan belajarmu.', 'fas fa-exclamation-triangle text-amber-500');
+                backToDashboard();
+            });
+        }
+
+        function showToast(msg, bgClass) {
+<!-- ... existing code ... -->
